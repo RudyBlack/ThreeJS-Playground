@@ -1,95 +1,115 @@
-import {fragmentShaderString, vertexShaderString} from "./webgl";
+import webglUtils from '././lib/webglUtils.js';
+import webglLessonsUI from '././lib/webglLessonsUI.js'
 
-const canvas = document.querySelector("#c") as HTMLCanvasElement;
+const canvas = document.querySelector("#canvas") as HTMLCanvasElement;
 const gl = canvas.getContext("webgl");
 
-function createShader(gl, type, source) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    const success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
-    if (success) {
-        return shader;
+
+"use strict";
+
+function main() {
+    // Get A WebGL context
+    /** @type {HTMLCanvasElement} */
+    if (!gl) {
+        return;
     }
 
-    gl.deleteShader(shader);
-}
+    // setup GLSL program
+    var program = webglUtils.createProgramFromScripts(gl, ["vertex-shader-2d", "fragment-shader-2d"]);
 
-function createProgram(gl, vertexShader, fragmentShader) {
-    var program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-    var success = gl.getProgramParameter(program, gl.LINK_STATUS);
-    if (success) {
-        return program;
+    // look up where the vertex data needs to go.
+    var positionLocation = gl.getAttribLocation(program, "a_position");
+
+    // lookup uniforms
+    var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+    var colorLocation = gl.getUniformLocation(program, "u_color");
+
+    // Create a buffer to put positions in
+    var positionBuffer = gl.createBuffer();
+
+    // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+    var translation = [0, 0];
+    var width = 100;
+    var height = 30;
+    var color = [Math.random(), Math.random(), Math.random(), 1];
+
+    drawScene();
+
+    // Setup a ui.
+    webglLessonsUI.setupSlider("#x", {slide: updatePosition(0), max: gl.canvas.width });
+    webglLessonsUI.setupSlider("#y", {slide: updatePosition(1), max: gl.canvas.height});
+
+    function updatePosition(index) {
+        return function(event, ui) {
+            translation[index] = ui.value;
+            drawScene();
+        };
     }
 
-    console.log(gl.getProgramInfoLog(program));
-    gl.deleteProgram(program);
-}
+    // Draw a the scene.
+    function drawScene() {
+        webglUtils.resizeCanvasToDisplaySize(gl.canvas);
 
-function resizeCanvasToDisplaySize(canvas, multiplier = 1) {
-    multiplier = multiplier || 1;
-    const width  = canvas.clientWidth  * multiplier | 0;
-    const height = canvas.clientHeight * multiplier | 0;
-    if (canvas.width !== width ||  canvas.height !== height) {
-        canvas.width  = width;
-        canvas.height = height;
-        return true;
+        // Tell WebGL how to convert from clip space to pixels
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        // Clear the canvas.
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // Tell it to use our program (pair of shaders)
+        gl.useProgram(program);
+
+        // Turn on the attribute
+        gl.enableVertexAttribArray(positionLocation);
+
+        // Bind the position buffer.
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+        // Setup a rectangle
+        setRectangle(gl, translation[0], translation[1], width, height);
+
+        // Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+        var size = 2;          // 2 components per iteration
+        var type = gl.FLOAT;   // the data is 32bit floats
+        var normalize = false; // don't normalize the data
+        var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+        var offset = 0;        // start at the beginning of the buffer
+        gl.vertexAttribPointer(
+            positionLocation, size, type, normalize, stride, offset);
+
+        // set the resolution
+        gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
+
+        // set the color
+        gl.uniform4fv(colorLocation, color);
+
+        // Draw the rectangle.
+        var primitiveType = gl.TRIANGLES;
+        var offset = 0;
+        var count = 6;
+        gl.drawArrays(primitiveType, offset, count);
     }
-    return false;
 }
 
-resizeCanvasToDisplaySize(gl.canvas);
-
-function init(){
-    gl.viewport(0,0, gl.canvas.width, gl.canvas.height);
-
-// Clear the canvas
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-
-    // Tell it to use our program (pair of shaders)
-    gl.useProgram(program);
-// Turn on the attribute
-    gl.enableVertexAttribArray(positionAttributeLocation);
+// Fill the buffer with the values that define a rectangle.
+function setRectangle(gl, x, y, width, height) {
+    var x1 = x;
+    var x2 = x + width;
+    var y1 = y;
+    var y2 = y + height;
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([
+            x1, y1,
+            x2, y1,
+            x1, y2,
+            x1, y2,
+            x2, y1,
+            x2, y2,
+        ]),
+        gl.STATIC_DRAW);
 }
 
-
-const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderString);
-const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderString);
-const program = createProgram(gl, vertexShader, fragmentShader);
-const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
-init();
-
-const positionBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-
-// three 2d points
-const positions = [
-    0, 0,
-    0, 1,
-    0.5, -0.7,
-    0.2, -0.9,
-    // 0,0
-];
-
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-
-// Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-const size = 2;          // 2 components per iteration
-const type = gl.FLOAT;   // the data is 32bit floats
-const normalize = false; // don't normalize the data
-const stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
-const offset = 0;        // start at the beginning of the buffer
-
-gl.vertexAttribPointer(positionAttributeLocation, size, type, normalize, stride, offset);
-
-// draw
-const primitiveType = gl.TRIANGLES;
-const count = 4;
-gl.drawArrays(primitiveType, 0, count);
-
-
+main();
